@@ -6,13 +6,14 @@ import dash
 import dash_core_components as dcc
 import dash_html_components as html
 from . import app
+from .doe import build_lhs_grid, build_sukharev_grid, build_maxmin_grid, _get_sampling_df
 
 VARIABLES = collections.OrderedDict([
     ('temperature',
-     dict(label='temperature / C', range=[100.0, 200.0], weight=1.0)),
-    ('h2o', dict(label='water / mL', range=[1.0, 6.0], weight=1.0)),
+     dict(label='temperature / C', range=[100.0, 200.0])),
+    ('h2o', dict(label='water / mL', range=[1.0, 6.0])),
     ('power', dict(label='microwave power / W', range=[
-     150.0, 250.0], weight=1.0)),
+     150.0, 250.0])),
 ])
 NVARS_DEFAULT = len(VARIABLES)
 
@@ -20,7 +21,7 @@ NVARS_DEFAULT = len(VARIABLES)
 NVARS_MAX = 10
 for i in range(len(VARIABLES), NVARS_MAX):
     k = 'variable_{}'.format(i + 1)
-    VARIABLES[k] = dict(label=k, range=[0, 1], weight=1)
+    VARIABLES[k] = dict(label=k, range=[0, 1])
 
 VAR_IDS = list(VARIABLES.keys())
 VAR_LABELS = [v['label'] for v in list(VARIABLES.values())]
@@ -29,7 +30,7 @@ WEIGHT_RANGE = [0, 1.0]
 NGRID = NVARS_MAX
 
 
-def get_controls(id, description: str, range: tuple, default_weight: float = 1.0):
+def get_controls(id, description: str, range: tuple):
 
     label = dcc.Input(
         id=id + "_label", type='text', value=description, className="label")
@@ -37,19 +38,10 @@ def get_controls(id, description: str, range: tuple, default_weight: float = 1.0
         id=id + "_low", type='number', value=range[0], className="range")
     range_high = dcc.Input(
         id=id + "_high", type='number', value=range[1], className="range")
-    slider = dcc.Slider(
-        id=id + "_weight",
-        min=WEIGHT_RANGE[0],
-        max=WEIGHT_RANGE[1],
-        value=default_weight,
-        step=0.1)
+
     return html.Tr([
         html.Td(label),
         html.Td([range_low, html.Span('to'), range_high]),
-        html.Td([
-            html.Span(slider, className="slider"),
-            html.Span('', id=id + "_weight_label")
-        ])
     ],
         id=id + "_tr")
 
@@ -61,8 +53,7 @@ for k, v in list(VARIABLES.items()):
 
 head_row = html.Tr([
     html.Th('Variable'),
-    html.Th('Range'),
-    html.Th('Importance'),
+    html.Th('Range')
 ])
 
 controls_html = html.Table(
@@ -73,9 +64,6 @@ label_states = [
 
 low_states = [dash.dependencies.State(k + "_low", 'value') for k in VAR_IDS]
 high_states = [dash.dependencies.State(k + "_high", 'value') for k in VAR_IDS]
-weight_states = [
-    dash.dependencies.State(k + "_weight", 'value') for k in VAR_IDS
-]
 
 inp_nvars = html.Tr([
     html.Td('Number of variables: '),
@@ -110,31 +98,22 @@ dropdown_method = dcc.Dropdown(
         {'label': 'Latin hypercube (simple)', 'value': 'lhs_simple'},
         {'label': 'Latin hypercube (space-filling)',
          'value': 'lhs_spacefilling'},
+        {'label': 'Sukarev', 'value': 'sukarev'},
         {'label': 'Maximin', 'value': 'maximin'},
-        {'label': 'Full factorial', 'value': 'ff'},
     ],
     value='lhs_simple',
     multi=False
 )
 
 
+# Delete the importance columns if lhs is selected
+# ToDo: maybe also remove it completely
 @app.callback(
     dash.dependencies.Output("dropdown_output", "children"),
     [dash.dependencies.Input("dropdown_method", "value")]
 )
 def print(value):
     return value
-
-
-# Update slider values
-for k, v in list(controls_dict.items()):
-
-    @app.callback(
-        dash.dependencies.Output(k + '_weight_label', 'children'),
-        [dash.dependencies.Input(k + '_weight', 'value')])
-    def slider_output(value):
-        """Callback for updating slider value"""
-        return "{:.2f}".format(value)
 
 
 # Callbacks to hide unselected variables
@@ -153,7 +132,7 @@ for i in range(NVARS_MAX):
         return style
 
 
-states = label_states + low_states + high_states + weight_states
+states = label_states + low_states + high_states
 states += [dash.dependencies.State('inp_nvars', 'value')]
 states += [dash.dependencies.State('nsamples', 'value')]
 
@@ -174,7 +153,7 @@ variables_div = html.Div(
 )
 
 
-ninps = len(label_states + low_states + high_states + weight_states) + 3
+ninps = len(label_states + low_states + high_states) + 3
 
 
 @app.callback(
@@ -193,44 +172,28 @@ def on_compute(n_clicks, *args):
     nvars = args[-3]
     mode = args[-1]
 
-    print("{}, {}".format(nsamples, nvars))
+    app.logger.debug("nsamples: {}, nvars: {}".format(nsamples, nvars))
 
     labels = args[:nvars]
     low_vals = np.array([args[i + NVARS_MAX] for i in range(nvars)])
     high_vals = np.array([args[i + 2 * NVARS_MAX] for i in range(nvars)])
-    weight_vals = 10**np.array([args[i + 3 * NVARS_MAX] for i in range(nvars)])
+    app.logger.debug("mode {}".format(mode))
 
-    print(mode)
-    if mode == 'uniform':
-        pass
-        # samples = uniform.compute(
-        #    var_LB=low_vals,
-        #    var_UB=high_vals,
-        #    num_samples=nsamples,
-        # )
-        #df = pd.DataFrame(data=samples, columns=labels)
-    elif mode == 'maxmin':
-        samples = maxmin.compute(
-            var_importance=weight_vals,
-            var_LB=low_vals,
-            var_UB=high_vals,
-            num_samples=nsamples,
-            ngrids_per_dim=ngrid,
-        )
-        df = pd.DataFrame(data=samples, columns=labels)
+    df = _get_sampling_df(labels, low_vals, high_vals, nsamples)
 
+    if mode == 'lhs_simple':
+        df_output = build_lhs_grid(df, nsamples)
+
+    elif mode == 'sukarev':
+        df_output = build_sukharev_grid(df, nsamples)
+    elif mode == 'maximin':
+        df_output = build_maxmin_grid(df, nsamples)
     else:
-        raise ValueError("Unknown mode '{}'".format(mode))
-
-    # add column for filling in experiments
-    df['Fitness'] = ""
+        df_output = build_lhs_grid(df, nsamples)
+        # raise ValueError("Unknown mode '{}'".format(mode))
 
     from .common import generate_table
 
-    table = generate_table(df, download_link=True)
-    # Note: this would have to be created beforehand
-    # table = dt.DataTable(
-    #    rows=df.to_dict('records'),
-    # )
+    table = generate_table(df_output, download_link=True)
 
     return table
