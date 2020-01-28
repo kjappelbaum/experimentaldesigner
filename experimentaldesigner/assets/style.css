@@ -4,6 +4,7 @@
   margin: 0px 15px;
 }
 
+
 .range {
   width: 75px;
   display: inline-block;
@@ -34,7 +35,7 @@ img.sycologo {
 }
 
 button.action-button {
-  margin: 10px;
+  margin: 5px;
 }
 
 .error {

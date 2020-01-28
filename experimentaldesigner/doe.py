@@ -2,9 +2,14 @@
 import pandas as pd
 from . import app
 import numpy as np
+import dash_html_components as html
 from pyDOE import lhs
-from diversipy.hycusampling import transform_spread_out, sukharev_grid, maximin_reconstruction
+from diversipy.hycusampling import transform_spread_out, sukharev_grid, maximin_reconstruction, random_k_means, random_uniform
+from diversipy.indicator import unanchored_L2_discrepancy, mean_dist_to_boundary, separation_dist
 from scipy.stats.distributions import norm, poisson, beta
+from sklearn.manifold import MDS
+from sklearn.preprocessing import StandardScaler, MinMaxScaler
+from .common import cell_format
 
 distribution_map = {
     'norm': norm,
@@ -17,10 +22,11 @@ def _map_random_matrix_to_df(random_matrix, sampling_df):
 
     experiments = []
 
+    app.logger.info("random matrix: {}".format(random_matrix))
+
     def remap(value, factorrange):
         scale = np.abs(factorrange[1]-factorrange[0])
         return factorrange[0]+(value*scale)
-
     for experiment_ind in range(random_matrix.shape[0]):
         experiment = {}
         for factor in range(random_matrix.shape[1]):
@@ -64,8 +70,10 @@ def _get_sampling_df(feature_names: list, lower_lim: list, upper_lim: list, num_
         sampling_dict['range'] = (lower, upper)
 
         sampling_dicts.append(sampling_dict)
-
-    return pd.DataFrame(sampling_dicts)
+    df = pd.DataFrame(sampling_dicts)
+    app.logger.info('The sampling dicts looks like {}'.format(df))
+    app.logger.info('The length of the df is {}'.format(len(df)))
+    return df
 
 
 def _get_num_samples(importances: list, num_samples: int) -> list:
@@ -92,39 +100,93 @@ def _get_num_samples(importances: list, num_samples: int) -> list:
     return samples_for_factor
 
 
-def build_lhs_grid(factor_ranges: pd.DataFrame, num_samples: int = None, criterion: str = None, distribution: str = None, spacefilling: bool = True) -> pd.DataFrame:
-    lhd = lhs(len(factor_ranges), samples=num_samples, criterion=criterion)
-
-    # ToDO: make this more elegant
+def _apply_dist(grid: np.array, distribution: str):
     if distribution not in list(distribution_map.keys()):
+        app.logger.info('Applying no distribution to sampling')
         distribution = None
     elif distribution == 'norm':
-        lhd = norm(loc=0, scale=1).ppf(lhd)
+        grid = norm(loc=0, scale=1).ppf(grid)
     elif distribution == 'poisson':
-        lhd = poisson().ppf(lhd)
+        grid = poisson().ppf(grid)
     elif distribution == 'beta':
-        lhd = beta().ppf(lhd)
+        grid = beta().ppf(grid)
 
-    # subsample if the weights are not equal
+    return grid
+
+
+def build_lhs_grid(factor_ranges: pd.DataFrame, num_samples: int = None, criterion: str = 'centermaximin', distribution: str = None, spacefilling: bool = False) -> pd.DataFrame:
+    lhd = lhs(len(factor_ranges), samples=num_samples, criterion=criterion)
+    app.logger.info('latin hypercube design {}'.format(lhd))
+    # ToDo: make this more elegant
+    _apply_dist(lhd, distribution)
 
     # spread out if needed
     if spacefilling:
         lhd = transform_spread_out(lhd)
 
-    df = _map_random_matrix_to_df(lhd, factor_ranges)
+    app.logger.info('latin hypercube design 2 {}'.format(lhd))
 
+    df = _map_random_matrix_to_df(lhd, factor_ranges)
+    app.logger.info('latin hypercube design 3 {}'.format(lhd))
     return df
 
 
 def build_sukharev_grid(factor_ranges: pd.DataFrame, num_samples: int) -> pd.DataFrame:
-    grid = sukharev_grid(num_points, len(factor_ranges))
+    grid = sukharev_grid(num_samples, len(factor_ranges))
     df = _map_random_matrix_to_df(grid, factor_ranges)
 
     return df
 
 
 def build_maxmin_grid(factor_ranges: pd.DataFrame, num_samples: int) -> pd.DataFrame:
-    grid = maximin_reconstruction(num_points, dimension)
+    grid = maximin_reconstruction(num_samples, len(factor_ranges))
     df = _map_random_matrix_to_df(grid, factor_ranges)
 
     return df
+
+
+def build_random_grid(factor_ranges: pd.DataFrame, num_samples: int) -> pd.DataFrame:
+    grid = random_uniform(num_samples, len(factor_ranges))
+
+    df = _map_random_matrix_to_df(grid, factor_ranges)
+
+    return df
+
+
+def build_kmeans_grid(factor_ranges: pd.DataFrame, num_samples: int) -> pd.DataFrame:
+    grid = random_k_means(num_samples, len(factor_ranges))
+
+    df = _map_random_matrix_to_df(grid, factor_ranges)
+
+    return df
+
+
+def measure_sampling_quality(sampled_frame):
+    in_unitcube = MinMaxScaler(feature_range=(
+        0.001, 0.999)).fit_transform(sampled_frame.values)
+    boundary_dist = mean_dist_to_boundary(in_unitcube)
+    l2 = unanchored_L2_discrepancy(in_unitcube)
+    min_dist = separation_dist(in_unitcube)
+
+    table = html.Table(
+        # Header
+        [html.Tr([html.Th('indicator'), html.Th('value')])] +
+
+        # Body
+        [
+            html.Tr([
+                html.Td('l2 discrepancy (should be minimized)'), html.Td(cell_format(l2))]),
+            html.Tr([html.Td('minimum pairwise distance (should be maximized)'), html.Td(
+                cell_format(min_dist))]),
+            html.Tr([html.Td('mean distance to boundary'),
+                     html.Td(cell_format(l2))])
+        ]
+
+    )
+
+    return table
+
+
+def run_mds(grid):
+    projected = MDS(2).fit_transform(StandardScaler().fit_transform(grid))
+    return projected

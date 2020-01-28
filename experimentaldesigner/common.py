@@ -6,6 +6,7 @@ import urllib
 import io
 import pandas as pd
 
+
 def render_df(df):
     return html.Div([
         # Use the DataTable prototype component:
@@ -27,7 +28,6 @@ def generate_table(dataframe, max_rows=100, download_link=False):
             urllib.parse.quote(csv_string),
             target="_blank",
             className='button')
-        components.append(link)
 
     components.append(
         html.Table(
@@ -42,6 +42,10 @@ def generate_table(dataframe, max_rows=100, download_link=False):
                 ]) for i in range(min(len(dataframe), max_rows))
             ]))
 
+    components.append(html.Div([html.P("\n\n")]))
+    components.append(link)
+    components.append(html.Div([html.P("\n\n")]))
+
     return components
 
 
@@ -49,4 +53,3 @@ def cell_format(value):
     if isinstance(value, float):
         return "{:.2f}".format(value)
     return value
-
