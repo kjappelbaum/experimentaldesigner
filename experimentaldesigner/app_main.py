@@ -30,7 +30,11 @@ layout = [
                 html.A(
                     "on github",
                     href="https://github.com/kjappelbaum/experimentaldesigner",
-                    target='_blank'), "."
+                ), ".", ' Based on ',
+                html.A(
+                    'sycofinder',
+                    href='https://github.com/ltalirz/sycofinder'
+                ), '.'
             ]),
         ],
         id="container",
