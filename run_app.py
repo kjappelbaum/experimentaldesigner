@@ -2,6 +2,8 @@
 from experimentaldesigner import app, app_main
 import dash.dependencies as dep
 
+server = app.server
+
 
 @app.callback(
     dep.Output('page-content', 'children'), [dep.Input('url', 'pathname')])
