@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from experimentaldesigner import app, app_main
+from experimentaldesigner import app, app_main, app_background
 import dash.dependencies as dep
 
 server = app.server
@@ -11,6 +11,8 @@ def display_page(pathname):
     # pylint: disable=no-else-return
     if pathname is None:
         return app_main.layout
+    if pathname.endswith('/background/'):
+        return app_background.layout
 
     return app_main.layout
 

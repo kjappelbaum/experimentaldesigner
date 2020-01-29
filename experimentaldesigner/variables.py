@@ -106,8 +106,6 @@ dropdown_method = dcc.Dropdown(
     id='dropdown_method',
     options=[
         {'label': 'Latin hypercube (simple)', 'value': 'lhs_simple'},
-        {'label': 'Latin hypercube (space-filling)',
-         'value': 'lhs_spacefilling'},
         {'label': 'Sukarev', 'value': 'sukarev'},
         {'label': 'Maximin', 'value': 'maximin'},
         {'label': 'random', 'value': 'random'},

@@ -16,6 +16,9 @@ layout = [
         [
             html.Div(html.H1(app.title), id="maintitle"),
             html.H2("About"),
+            html.P(['We recommend that you visit ',        html.A(
+                    "the page with background information",
+                    href="background/"), "."]),
             html.Div(
                 ABOUT_HTML,
                 className="info-container"),
@@ -26,7 +29,7 @@ layout = [
                 "Find the code ",
                 html.A(
                     "on github",
-                    href="",
+                    href="https://github.com/kjappelbaum/experimentaldesigner",
                     target='_blank'), "."
             ]),
         ],
